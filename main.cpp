@@ -11,7 +11,7 @@ using namespace std;
 #define NUM_ITERATIONS 1000000
 
 enum cacheResType { MISS = 0, HIT = 1 };
-char *msg[2] = {"Miss", "Hit"};
+const char *msg[2] = {"Miss", "Hit"};
 
 /* The following implements a random number generator */
 unsigned int m_w = 0xABABAB55;    /* must not be zero, nor 0x464fffff */
@@ -22,29 +22,35 @@ unsigned int rand_() {
     return (m_z << 16) + m_w;  /* 32-bit result */
 }
 
+//Strictly sequential through the entire 64 MB address space
 unsigned int memGen1() {
     static unsigned int addr = 0;
     return (addr++) % DRAM_SIZE;
 }
 
+//Uniformly random within a 24 KB range (0 … 24 * 1024–1).
 unsigned int memGen2() {
     return rand_() % (24 * 1024);
 }
 
+//Uniformly random over the full 64 MB.
 unsigned int memGen3() {
     return rand_() % DRAM_SIZE;
 }
 
+//Strictly sequential but confined to a small 4 KB buffer
 unsigned int memGen4() {
     static unsigned int addr = 0;
     return (addr++) % (4 * 1024);
 }
 
+//Sequential over 64 KB
 unsigned int memGen5() {
     static unsigned int addr = 0;
     return (addr++) % (64 * 1024);
 }
 
+//Strided access: each address jumps ahead by 32 bytes, modulo 256 KB 
 unsigned int memGen6() {
     static unsigned int addr = 0;
     return (addr += 32) % (64 * 4 * 1024);
@@ -107,16 +113,24 @@ void runExperiment(string label, function<unsigned int()> memGen, unsigned int l
     cout << label << " | Line Size: " << lineSize << " | Ways: " << ways
          << " | Hit Ratio: " << fixed << setprecision(2) << hitRatio << "%\n";
 }
-
 int main()
 {
-    vector<function<unsigned int()>> memGens = {memGen1, memGen2, memGen3, memGen4, memGen5, memGen6};
-    vector<string> labels = {"memGen1", "memGen2", "memGen3", "memGen4", "memGen5", "memGen6"};
+    vector<function<unsigned int()>> memGens = { memGen1, memGen2, memGen3, memGen4, memGen5, memGen6 };
+    vector<string> labels = { "memGen1", "memGen2", "memGen3", "memGen4", "memGen5", "memGen6" };
 
-    // Example: Run Experiment 1 for each memGen function
+    cout << "===== Experiment 1: Varying Line Size (Fixed Sets = 4) =====\n";
     for (int i = 0; i < memGens.size(); i++) {
         for (unsigned int lineSize : {16, 32, 64, 128}) {
-            unsigned int ways = CACHE_SIZE / (lineSize * 4); // keep 4 sets constant
+            unsigned int ways = CACHE_SIZE / (lineSize * 4); // Fix sets = 4
+            runExperiment(labels[i], memGens[i], lineSize, ways);
+        }
+        cout << "--------------------------\n";
+    }
+
+    cout << "\n===== Experiment 2: Varying Ways (Line Size = 64) =====\n";
+    for (int i = 0; i < memGens.size(); i++) {
+        unsigned int lineSize = 64;
+        for (unsigned int ways : {1, 2, 4, 8, 16}) {
             runExperiment(labels[i], memGens[i], lineSize, ways);
         }
         cout << "--------------------------\n";
@@ -124,3 +138,4 @@ int main()
 
     return 0;
 }
+

@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <functional>
 #include <cmath>
+#include <string>
 
 using namespace std;
 
@@ -11,7 +12,7 @@ using namespace std;
 #define NUM_ITERATIONS 1000000
 
 enum cacheResType { MISS = 0, HIT = 1 };
-const char *msg[2] = {"Miss", "Hit"};
+const char* msg[2] = { "Miss", "Hit" };
 
 /* The following implements a random number generator */
 unsigned int m_w = 0xABABAB55;    /* must not be zero, nor 0x464fffff */
@@ -73,7 +74,7 @@ public:
         this->ways = ways;
         numSets = CACHE_SIZE / (lineSize * ways);
         cache.resize(numSets, vector<CacheLine>(ways));
-        lruIndex.resize(numSets, 0); // round-robin index
+        lruCounter.resize(numSets, 0); // Initialize LRU counter for each set
     }
 
     cacheResType access(unsigned int addr) {
@@ -82,23 +83,40 @@ public:
         unsigned int tag = blockAddr / numSets;
 
         // Search for hit
-        for (auto &line : cache[setIndex]) {
-            if (line.valid && line.tag == tag) {
+        for (unsigned int i = 0; i < ways; i++) {
+            if (cache[setIndex][i].valid && cache[setIndex][i].tag == tag) {
                 return HIT;
             }
         }
 
-        // Miss: replace using round-robin
-        cache[setIndex][lruIndex[setIndex]].valid = true;
-        cache[setIndex][lruIndex[setIndex]].tag = tag;
-        lruIndex[setIndex] = (lruIndex[setIndex] + 1) % ways;
+        // Miss: find an invalid line or evict the LRU line
+        unsigned int replaceIndex = ways; // Default to invalid value
+
+        // First, try to find an invalid line
+        for (unsigned int i = 0; i < ways; i++) {
+            if (!cache[setIndex][i].valid) {
+                replaceIndex = i;
+                break;
+            }
+        }
+
+        // If all lines are valid, use the round-robin counter
+        if (replaceIndex == ways) {
+            replaceIndex = lruCounter[setIndex];
+            lruCounter[setIndex] = (lruCounter[setIndex] + 1) % ways;
+        }
+
+        // Replace the selected line
+        cache[setIndex][replaceIndex].valid = true;
+        cache[setIndex][replaceIndex].tag = tag;
+
         return MISS;
     }
 
 private:
     unsigned int lineSize, ways, numSets;
     vector<vector<CacheLine>> cache;
-    vector<unsigned int> lruIndex;
+    vector<unsigned int> lruCounter; // For round-robin replacement
 };
 
 // Run a test experiment
@@ -111,10 +129,78 @@ void runExperiment(string label, function<unsigned int()> memGen, unsigned int l
     }
     double hitRatio = 100.0 * hits / NUM_ITERATIONS;
     cout << label << " | Line Size: " << lineSize << " | Ways: " << ways
-         << " | Hit Ratio: " << fixed << setprecision(2) << hitRatio << "%\n";
+        << " | Hit Ratio: " << fixed << setprecision(2) << hitRatio << "%\n";
 }
-int main()
-{
+
+//We developed this function to make sure our simulator is working correctly
+void testCorrectness(string label, const vector<unsigned int>& addresses, unsigned int lineSize, unsigned int ways, unsigned int expectedHits, unsigned int expectedMisses) {
+    CacheSimulator sim(lineSize, ways);
+    unsigned int hits = 0, misses = 0;
+
+    cout << "Test details for configuration: " << label << "\n";
+
+    for (size_t i = 0; i < addresses.size(); i++) {
+        unsigned int addr = addresses[i];
+        cacheResType result = sim.access(addr);
+        if (result == HIT) hits++;
+        else misses++;
+
+        unsigned int block = addr / lineSize;
+        unsigned int set = block % (CACHE_SIZE / (lineSize * ways));
+        cout << "  Access #" << (i + 1) << ": Address " << addr
+            << " -> " << msg[result] << " (Set: " << set << ")\n";
+
+    }
+
+    cout << "[Test Summary] " << label
+        << " | Line Size: " << lineSize
+        << " | Ways: " << ways
+        << " | Hits: " << hits << " (Expected: " << expectedHits << ")"
+        << " | Misses: " << misses << " (Expected: " << expectedMisses << ")"
+        << " | Result: " << ((hits == expectedHits && misses == expectedMisses) ? "PASS" : "FAIL") << "\n";
+
+}
+
+void runCustomTests() {
+    cout << "\n===== Custom Line Size Tests =====\n";
+
+    vector<unsigned int> lineSizes = { 16, 32, 64, 128 };
+    unsigned int waysFixed = 4;
+
+    for (unsigned int lineSize : lineSizes) {
+        vector<unsigned int> addresses;
+        for (unsigned int i = 0; i < lineSize; ++i)
+            addresses.push_back(i);
+        string label = "LineSize=" + to_string(lineSize);
+        testCorrectness(label, addresses, lineSize, waysFixed, lineSize - 1, 1);
+    }
+
+    cout << "\n===== Custom Way Associativity Tests (Eviction) =====\n";
+
+    unsigned int lineSize = 64;
+    vector<unsigned int> waysList = { 1, 2, 4, 8 };
+
+    for (unsigned int ways : waysList) {
+        unsigned int numSets = CACHE_SIZE / (lineSize * ways);
+        unsigned int stride = numSets * lineSize;
+
+        vector<unsigned int> addresses;
+        // Generate (ways + 1) addresses that map to same set (here set 0)
+        for (unsigned int i = 0; i <= ways; ++i)
+            addresses.push_back(i * stride);
+
+        // Re-access the first address to test if it was replaced
+        addresses.push_back(0);
+
+        string label = "Ways=" + to_string(ways);
+        testCorrectness(label, addresses, lineSize, ways, 0, ways + 2);
+    }
+}
+
+int main() {
+    //comment or uncomment this function to see the output of our testing
+    runCustomTests();
+    //this part is for experiments 1 and 2
     vector<function<unsigned int()>> memGens = { memGen1, memGen2, memGen3, memGen4, memGen5, memGen6 };
     vector<string> labels = { "memGen1", "memGen2", "memGen3", "memGen4", "memGen5", "memGen6" };
 
@@ -135,7 +221,5 @@ int main()
         }
         cout << "--------------------------\n";
     }
-
     return 0;
 }
-

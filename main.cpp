@@ -28,29 +28,29 @@ unsigned int memGen1() {
     return (addr++) % DRAM_SIZE;
 }
 
-//Uniformly random within a 24 KB range (0 … 24 * 1024–1).
+//Uniformly random within a 24 KB range (0 … 24 * 1024–1).
 unsigned int memGen2() {
     return rand_() % (24 * 1024);
 }
 
-//Uniformly random over the full 64 MB.
+//Uniformly random over the full 64 MB.
 unsigned int memGen3() {
     return rand_() % DRAM_SIZE;
 }
 
-//Strictly sequential but confined to a small 4 KB buffer
+//Strictly sequential but confined to a small 4 KB buffer
 unsigned int memGen4() {
     static unsigned int addr = 0;
     return (addr++) % (4 * 1024);
 }
 
-//Sequential over 64 KB
+//Sequential over 64 KB
 unsigned int memGen5() {
     static unsigned int addr = 0;
     return (addr++) % (64 * 1024);
 }
 
-//Strided access: each address jumps ahead by 32 bytes, modulo 256 KB 
+//Strided access: each address jumps ahead by 32 bytes, modulo 256 KB 
 unsigned int memGen6() {
     static unsigned int addr = 0;
     return (addr += 32) % (64 * 4 * 1024);
